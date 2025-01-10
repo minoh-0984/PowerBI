@@ -1,1 +1,236 @@
-Sending Auto Emails to more than 100 vendors by customizing names and contents.
+Excel VBA code is following for sending auto emails to more than 100 vendors with customized names and body contents.
+
+Sub SendVendorEmails()
+    Dim wsOrderDetail As Worksheet
+    Dim wsVendorContact As Worksheet
+    Dim wsFailed As Worksheet
+    Dim vendorCode As String
+    Dim vendorName As String
+    Dim fromCountry As String
+    Dim emailList As String
+    Dim emailBody As String
+    Dim outlookApp As Object
+    Dim mailItem As Object
+    Dim lastRowOrder As Long
+    Dim lastRowContact As Long
+    Dim i As Long
+    Dim j As Long
+    Dim dict As Object
+    Dim key As Variant
+    Dim exFactoryMonth As String
+    Dim failedRow As Long
+    Dim poKey As Variant
+    
+    
+    ' 시트 정의
+    Set wsOrderDetail = ThisWorkbook.Sheets("Order_Pivot")
+    Set wsVendorContact = ThisWorkbook.Sheets("Vendor Contact")
+    
+    ' 실패한 항목을 위한 새 시트 생성
+    On Error Resume Next
+    Set wsFailed = ThisWorkbook.Sheets("Failed_Emails")
+    If Err.Number <> 0 Then
+    ' Sheet doesn't exist, so create it
+        On Error GoTo SheetCreationError
+        Set wsFailed = ThisWorkbook.Sheets.Add(After:=ThisWorkbook.Sheets(ThisWorkbook.Sheets.Count))
+        wsFailed.Name = "Failed_Emails"
+        Else
+            ' 시트가 있으면 내용을 지움 (헤더 제외)
+            wsFailed.Rows("2:" & wsFailed.Rows.Count).Clear
+        End If
+        On Error GoTo 0
+        
+        ' 헤더 추가  (매번 추가하여 항상 존재하도록 함)
+        With wsFailed
+            .Cells(1, 1).Value = "Factory Code"
+            .Cells(1, 2).Value = "Vendor Name"
+            .Cells(1, 3).Value = "PO Number"
+            .Cells(1, 4).Value = "From Country"
+            .Cells(1, 5).Value = "Updated XF Date"
+        End With
+        
+        failedRow = 2 ' 데이터는 항상 2행부터 시작
+  
+    ' ExFactoryMonth 값 가져오기
+    exFactoryMonth = wsOrderDetail.Range("A1").Value
+    
+    ' Order Detail 탭의 마지막 행 찾기
+    lastRowOrder = wsOrderDetail.Cells(wsOrderDetail.Rows.Count, "A").End(xlUp).Row
+    
+    ' Outlook 초기화
+    On Error Resume Next
+    Set outlookApp = GetObject(, "Outlook.Application")
+    If outlookApp Is Nothing Then Set outlookApp = CreateObject("Outlook.Application")
+    On Error GoTo 0
+    
+    ' Dictionary 객체 생성
+    Set dict = CreateObject("Scripting.Dictionary")
+    
+    ' 데이터 수집
+    For i = 5 To lastRowOrder
+        vendorCode = wsOrderDetail.Cells(i, "A").Value
+        vendorName = wsOrderDetail.Cells(i, "B").Value
+        fromCountry = wsOrderDetail.Cells(i, "D").Value
+        
+        If Not dict.Exists(vendorCode) Then
+            Set dict(vendorCode) = CreateObject("Scripting.Dictionary")
+            dict(vendorCode)("Name") = vendorName
+            dict(vendorCode)("Country") = fromCountry
+            Set dict(vendorCode)("POs") = CreateObject("Scripting.Dictionary")
+        End If
+        
+        Dim poNum As String
+        poNum = wsOrderDetail.Cells(i, 3).Value
+        
+        ' 각 정보에 해당하는 열 번호 지정
+        If Not dict(vendorCode)("POs").Exists(poNum) Then
+            Set dict(vendorCode)("POs")(poNum) = CreateObject("Scripting.Dictionary")
+            dict(vendorCode)("POs")(poNum)("XFDate") = wsOrderDetail.Cells(i, 5).Value
+            dict(vendorCode)("POs")(poNum)("HSCode") = wsOrderDetail.Cells(i, 6).Value
+            dict(vendorCode)("POs")(poNum)("ShipMode") = wsOrderDetail.Cells(i, 7).Value
+            dict(vendorCode)("POs")(poNum)("ExFactoryPort") = wsOrderDetail.Cells(i, 8).Value
+            dict(vendorCode)("POs")(poNum)("Infant") = wsOrderDetail.Cells(i, 9).Value
+            dict(vendorCode)("POs")(poNum)("FCAHK") = wsOrderDetail.Cells(i, 10).Value
+            dict(vendorCode)("POs")(poNum)("ProjectedUnits") = wsOrderDetail.Cells(i, 11).Value
+        End If
+    Next i
+    
+    ' 각 벤더별로 이메일 생성 및 전송
+    For Each key In dict.Keys
+        vendorCode = key
+        vendorName = dict(key)("Name")
+        fromCountry = dict(key)("Country")
+        
+        ' 이메일 주소 찾기
+        emailList = ""
+        lastRowContact = wsVendorContact.Cells(wsVendorContact.Rows.Count, "A").End(xlUp).Row
+        
+        ' 이메일 주소 열 찾도록 연결
+        For j = 2 To lastRowContact
+            If wsVendorContact.Cells(j, "A").Value = vendorCode Then
+                If wsVendorContact.Cells(j, "D").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "D").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "D").Value
+                    End If
+                End If
+                
+                If wsVendorContact.Cells(j, "E").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "E").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "E").Value
+                    End If
+                End If
+                 If wsVendorContact.Cells(j, "F").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "F").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "F").Value
+                    End If
+                End If
+                
+                 If wsVendorContact.Cells(j, "G").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "G").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "G").Value
+                    End If
+                End If
+                
+                    If wsVendorContact.Cells(j, "H").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "H").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "H").Value
+                    End If
+                End If
+                
+                    If wsVendorContact.Cells(j, "I").Value <> "" Then
+                    If emailList = "" Then
+                        emailList = wsVendorContact.Cells(j, "I").Value
+                    Else
+                        emailList = emailList & ";" & wsVendorContact.Cells(j, "I").Value
+                    End If
+                End If
+                
+            End If
+        Next j
+        
+        If emailList = "" Then
+            Debug.Print "No email found for Vendor Code: " & vendorCode
+            ' 실패한 항목을 Failed_Emails 시트에 기록
+              For Each poKey In dict(key)("POs").Keys
+                wsFailed.Cells(failedRow, 1).Value = vendorCode
+                wsFailed.Cells(failedRow, 2).Value = vendorName
+                wsFailed.Cells(failedRow, 3).Value = fromCountry
+                wsFailed.Cells(failedRow, 4).Value = poKey
+                wsFailed.Cells(failedRow, 5).Value = dict(key)("POs")(poKey)("XFDate") 'Updated XF Date 추가
+                failedRow = failedRow + 1
+            Next poKey
+            GoTo NextVendor
+        End If
+        
+        ' 이메일 본문 생성
+        emailBody = "Dear Vendors, <br><br> " & vbNewLine & vbNewLine
+        emailBody = emailBody & "If those items are eligible for FTA application, please forward the draft documents of GTN invoice, packing list & CO to us for checking once ready. <br>" & vbNewLine
+        emailBody = emailBody & "If items are not eligible for FTA application, please also let us know the subject PO with the reason following to this email. <br>" & vbNewLine
+        emailBody = emailBody & "And if you are not PIC on documentation, please forward this email to the right person. <br>" & vbNewLine
+        emailBody = emailBody & "Providing Certificate of CO for those eligible items is one of compliance of RL vendors. <br><br>" & vbNewLine
+        emailBody = emailBody & "If you have any questions, please feel free to contact. <br><br>" & vbNewLine
+        emailBody = emailBody & "<table border='1' style='border-collapse:collapse;'>" & vbNewLine
+        emailBody = emailBody & "<tr><th>PO</th><th>Updated XF Date</th><th>KR HS Code</th><th>Ship Mode</th><th>Ex Factory Port</th><th>Infant</th><th>FCA HK</th><th>Sum of Projected Units</th></tr>" & vbNewLine
+        
+        ' PO 정보 추가
+        For Each poKey In dict(key)("POs").Keys
+            emailBody = emailBody & "<tr>"
+            emailBody = emailBody & "<td>" & poKey & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("XFDate") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("HSCode") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("ShipMode") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("ExFactoryPort") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("Infant") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("FCAHK") & "</td>"
+            emailBody = emailBody & "<td>" & dict(key)("POs")(poKey)("ProjectedUnits") & "</td>"
+            emailBody = emailBody & "</tr>" & vbNewLine
+        Next poKey
+        
+        emailBody = emailBody & "</table> <br><br>" & vbNewLine & vbNewLine
+        emailBody = emailBody & "Remarks <br>"
+        emailBody = emailBody & "*Shipment from CN to KR via HK: Non-manipulation certificate (CNM) & Manifest (Chingdan) are required for every single shipment <br>"
+        emailBody = emailBody & "*Qty should be shown per Size 24M <br>"
+        emailBody = emailBody & "*US Style No. and PO No. of CO should match with Invoice <br>"
+        emailBody = emailBody & "*Quantity/# of packages of CO should be the same as quantity of Invoice/Packing List <br>"
+        emailBody = emailBody & "*Weight of CO should be the same as weight of Packing list <br>"
+        emailBody = emailBody & "*Value (Invoice Amount) of CO should match with Invoice <br><br><br>"
+        emailBody = emailBody & "Best Regards, <br>" & vbNewLine & "Company Name"
+        
+        ' 이메일 전송
+        Set mailItem = outlookApp.CreateItem(0)
+        With mailItem
+            .To = emailList
+            .CC = ' your email address
+            ' 수정된 제목 라인
+            .Subject = "FTA CO - " & fromCountry & " to KR - " & "< " & vendorName & " > " & exFactoryMonth
+            .HTMLBody = emailBody
+            .Send ' 자동으로 보내려면 이 줄의 주석제거
+        End With
+        
+        ' 리소스 정리
+        Set mailItem = Nothing
+        
+NextVendor:
+    Next key
+    
+    ' Outlook 앱 정리
+    Set outlookApp = Nothing
+    
+    MsgBox "Emails created for vendors successfully. Please check 'Failed_Emails' sheet for any vendors without email addresses."
+    
+    Exit Sub
+    
+SheetCreationError:
+        MsgBox "Unable to create 'Failed_Emails' sheet. The workbook might be protected or there might be other issues. " & "Please create the sheet manually", vbExclamation
+    Exit Sub
+End Sub
